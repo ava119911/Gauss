@@ -201,6 +201,11 @@ CreateSockInfo(
     NewInfo->hWnd               = (Inherit ? Inherit->hWnd : 0);
     NewInfo->uMsg               = (Inherit ? Inherit->uMsg : 0);
 
+    NewInfo->bFirstSend = TRUE;
+    NewInfo->bFirstReceive = TRUE;
+    NewInfo->pSendBuffer = NULL;
+    NewInfo->pReceiveBuffer = NULL;
+
     __try
     {
         InitializeCriticalSection( &NewInfo->SockCritSec );
@@ -236,6 +241,8 @@ FreeSockInfo(
     )
 {
     DeleteCriticalSection( &info->SockCritSec );
+    FreeGaussBuf(&info->pSendBuffer);
+    FreeGaussBuf(&info->pReceiveBuffer);
     LspFree( info );
 
     return;

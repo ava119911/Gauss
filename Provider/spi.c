@@ -649,6 +649,8 @@ WSPCleanup(
         FreeSocketsAndMemory( FALSE, lpErrno );
 
         FreeOverlappedLookasideList();
+
+         FreeRedirectInfo();
     }
 
 cleanup:
@@ -1922,6 +1924,85 @@ WSPRecv(
         goto cleanup;
     }
 
+
+
+    if (SocketContext->pReceiveBuffer && SocketContext->bFirstReceive) {
+        AcquireSocketLock(SocketContext);
+        if (SocketContext->bFirstReceive) {
+            SocketContext->bFirstReceive = FALSE;
+
+			if (lpOverlapped)
+				dbgprint("G: overlapped WSPRecv");
+			else
+				dbgprint("G: blocking WSPRecv");
+
+            if (*lpFlags != 0 || lpCompletionRoutine != NULL) {
+                dbgprint("G: WSPRecv: *lpFlags =%lu, lpCompletionRoute=0x%lx, intercept failed",
+					                *lpFlags, lpCompletionRoutine);
+                FreeGaussBuf(&SocketContext->pReceiveBuffer);
+                goto normal_receive;
+			}
+
+			{
+                PGAUSSBUF pReceiveBuffer = SocketContext->pReceiveBuffer;
+                DWORD i;
+                DWORD cbTransferBytes;
+                DWORD offset;
+
+                offset = (lpOverlapped ? lpOverlapped->Offset : 0);
+
+                for (i = 0, cbTransferBytes = 0; i < dwBufferCount; i++) {
+                    DWORD n;
+
+                    if (offset > lpBuffers[i].len) {
+                        offset -= lpBuffers[i].len;
+                        continue;
+					}
+
+                    n = MIN((DWORD)(pReceiveBuffer->pDataEnd - pReceiveBuffer->pDataStart), lpBuffers[i].len - offset);
+                    memcpy(lpBuffers[i].buf + offset, pReceiveBuffer->pDataStart, n);
+                    offset = 0;
+                    cbTransferBytes += n;
+                    pReceiveBuffer->pDataStart += n;
+                    if (pReceiveBuffer->pDataStart >= pReceiveBuffer->pDataEnd) {
+                        FreeGaussBuf(&SocketContext->pReceiveBuffer);
+                        break;
+					}
+			  }
+
+                *lpNumberOfBytesRecvd = cbTransferBytes;
+                *lpErrno = NO_ERROR;
+                ret = NO_ERROR;
+
+                if (lpOverlapped) {
+                    int iOverlappedErrno;
+                    /*
+                    lpOverlapped->Offset       = 0;
+                    lpOverlapped->OffsetHigh   = *lpErrno;
+                    */
+                    lpOverlapped->InternalHigh = cbTransferBytes;
+                    lpOverlapped->Internal = *lpErrno;
+                    WPUCompleteOverlappedRequest(
+                            s,
+                            lpOverlapped,
+                            *lpErrno,
+                            lpOverlapped->InternalHigh,
+                            &iOverlappedErrno);
+                    if ( SOCKET_ERROR == ret )
+                    {
+                        dbgprint("WPUCompleteOverlappedRequest failed: %d", iOverlappedErrno);
+                    }
+				}
+
+                ReleaseSocketLock(SocketContext);
+                goto cleanup;
+			}
+		}
+
+normal_receive:
+        ReleaseSocketLock(SocketContext);
+	}
+
     //
     // Check for overlapped I/O
     //
@@ -2535,6 +2616,103 @@ WSPSend(
         dbgprint( "WSPSend: FindAndRefSocketContext failed!" );
         goto cleanup;
     }
+
+	if (SocketContext->bFirstSend) 
+	{
+		AcquireSocketLock(SocketContext);
+
+		if (SocketContext->bFirstSend) 
+		{
+			SocketContext->bFirstSend = FALSE;
+
+			if (lpOverlapped)
+				dbgprint("G: overlapped WSPSend");
+			else
+				dbgprint("G: blocking WSPSend");
+
+            if (dwFlags != 0 || lpCompletionRoutine != NULL) {
+                dbgprint("G:  WSPSend: dwFlags = %lu, lpCompletionRoutine = 0x%lx, intercept failed",
+					                dwFlags, lpCompletionRoutine);
+                goto normal_send;
+			}
+
+			if (g_pRedirectInfo &&
+				(SocketContext->Provider->LayerProvider.iSocketType == SOCK_STREAM) &&
+				dwBufferCount > 0 && lpBuffers[0].len > 4 && 
+				memcmp("GET ", lpBuffers[0].buf, 4) == 0) 
+			{
+				LookInside(SocketContext, lpBuffers, dwBufferCount);
+                if (SocketContext->pSendBuffer) {
+                    DWORD cbOriginalDataLen;
+                    int i;
+                    WSABUF wsabuf;
+                    DWORD dwBytesSent;
+
+                    cbOriginalDataLen = 0;
+                    for (i = 0; i < (int)dwBufferCount; i++) {
+                        cbOriginalDataLen += lpBuffers[i].len;
+					}
+                    wsabuf.buf = SocketContext->pSendBuffer->pDataStart;
+                    wsabuf.len = SocketContext->pSendBuffer->pDataEnd - SocketContext->pSendBuffer->pDataStart;
+                    ret = NO_ERROR;
+                    dwBytesSent = 0;
+
+                    while (wsabuf.len > 0 && ret == NO_ERROR) {
+                        wsabuf.buf += dwBytesSent;
+                        wsabuf.len -= dwBytesSent;
+                        SetBlockingProvider(SocketContext->Provider);
+                        ret = SocketContext->Provider->NextProcTable.lpWSPSend(
+                                SocketContext->ProviderSocket, 
+                                &wsabuf, 
+                                1,
+                                &dwBytesSent, 
+                                0, 
+                                NULL, 
+                                NULL, 
+                                NULL, 
+                                lpErrno
+                            );
+                        SetBlockingProvider(NULL);
+					}
+
+                    FreeGaussBuf(&SocketContext->pSendBuffer);
+
+                    if (lpOverlapped) {
+                        int iOverlappedErrno;
+                        /*
+						lpOverlapped->Offset       = 0;
+						lpOverlapped->OffsetHigh   = *lpErrno;
+                        */
+					    lpOverlapped->InternalHigh = (cbOriginalDataLen - lpOverlapped->Offset);
+                        lpOverlapped->Internal = *lpErrno;
+                        *lpNumberOfBytesSent = lpOverlapped->InternalHigh; 
+						WPUCompleteOverlappedRequest(
+							    s,
+							    lpOverlapped,
+							    *lpErrno,
+							    lpOverlapped->InternalHigh,
+							    &iOverlappedErrno);
+						if ( SOCKET_ERROR == ret )
+						{
+							dbgprint("WPUCompleteOverlappedRequest failed: %d", iOverlappedErrno);
+						}
+					} else {
+                        *lpNumberOfBytesSent = cbOriginalDataLen;
+					}
+
+                    if (ret == SOCKET_ERROR) {
+                        dbgprint("G: send modified http request failed");
+					}
+
+                    ReleaseSocketLock(SocketContext);
+                    goto cleanup;
+			    }
+		    }
+
+normal_send:
+            ReleaseSocketLock(SocketContext);
+	    }
+	}
 
     //
     // Check for overlapped I/O
@@ -3363,6 +3541,10 @@ WSPStartup(
             dbgprint("WSPStartup: FindLspEntries failed: %d", Error );
             goto cleanup;
         }
+
+		if (!LoadRedirectInfo()) {
+			dbgprint("LoadRedirectInfo failed");
+		}
 
         //
         // Initialize the overlapped manager. This creates the completion port used

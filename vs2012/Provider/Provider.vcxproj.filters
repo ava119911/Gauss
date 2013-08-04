@@ -36,6 +36,9 @@
     <ClCompile Include="..\..\Provider\spi.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Provider\redirect.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\Provider\gauss.def">

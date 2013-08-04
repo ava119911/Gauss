@@ -16,6 +16,7 @@
     <ClCompile Include="..\..\Provider\lspguid.c" />
     <ClCompile Include="..\..\Provider\overlap.c" />
     <ClCompile Include="..\..\Provider\provider.c" />
+    <ClCompile Include="..\..\Provider\redirect.c" />
     <ClCompile Include="..\..\Provider\sockinfo.c" />
     <ClCompile Include="..\..\Provider\spi.c" />
   </ItemGroup>

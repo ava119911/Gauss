@@ -50,9 +50,9 @@ static LPSTR g_pLinktectRedirectTemplate =
 static LPSTR g_pRedirectMessageTemplate = 
 	"HTTP/1.1 200 OK\r\n"
     "Server: Apache/2.2.23 (Unix) mod_ssl/2.2.23 OpenSSL/1.0.1e DAV/2\r\n"
-    "pragma: no-cache"
-	"cache-control: no-cache"
-    "expires: -1"
+    "pragma: no-cache\r\n"
+	"cache-control: no-cache\r\n"
+    "expires: -1\r\n"
 	"Content-Length: %d\r\n"
     "Connection: close\r\n"
 	"Content-Type: text/html\r\n\r\n"

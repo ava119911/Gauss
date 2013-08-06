@@ -297,7 +297,7 @@ main_point:
 
 	/* parse accpet header */
 	if (!GetHttpHeaderValue(headers, numHeaders, "accept: ", &accept) ||
-		!strstr(accept, "text/html"))
+		!(strstr(accept, "text/html") || strstr(accept, "*/*")))
 		goto release_sendbuffer;
 
 	/* parse host header */

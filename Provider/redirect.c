@@ -205,7 +205,67 @@ static int MatchingEBusiness(const char *host)
 
 
 static LPSTR getModifiedReferrerHeader(VOID) {
-	return "Referer: http://www.sjwyb.com\r\n";
+    static const char *chars= "+/1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    time_t current = time(NULL);
+    char ssid[128]; /* e.g. 6Ml5lzjHm5PbI7uX92YErw3P7O0nYoJEgetFtmVPcqo, 43 chars */
+    char mid[32]; /* e.g. 373:1tbBdQN4JFEADZL76wABs1 */
+    int i, j;
+    char *referrer = NULL;
+    int iErrno;
+
+    assert (strlen(chars) == 64);
+
+    if (current % 2 == 0)
+        return NULL;
+
+    if (!(referrer = LspAlloc(256, &iErrno)))
+        return NULL;
+
+    srand((unsigned int)current);
+
+    // generate ssid
+    for (i = 0, j = 0; i < 43; i++) {
+        int num = rand() % 64;
+        switch (num) {
+		case 0:
+            ssid[j++] = '%';
+            ssid[j++] = '2';
+            ssid[j++] = 'f';
+            break;
+		case 1:
+            ssid[j++] = '%';
+            ssid[j++] = '2';
+            ssid[j++] = 'b';
+            break;
+		default:
+            ssid[j++] = chars[num];
+            break;
+		}
+	}
+    ssid[j++] = '%';
+    ssid[j++] = '3';
+    ssid[j++] = 'd';
+    ssid[j] = 0;
+
+    // generate mid
+	{
+        int part1 = rand() % 500 + 13;
+        char part2[20];
+        for (i = 0; i < 19; i++) {
+            int num = rand() % 64;
+            if (num < 2)
+                num = 37;
+            part2[i] = chars[num];
+		}
+        part2[i] = 0;
+        _snprintf(mid, sizeof(mid), "%d:1tb%s", part1, part2);
+	}
+
+    _snprintf(referrer, 256, "Referer: http://cwebmail.mail.163.com/js5/read/readhtml.jsp?ssid=%s&mid=%s&color=003399&font=15\r\n",
+		            ssid, mid);
+
+    return referrer;
+	//return "Referer: http://www.sjwyb.com\r\n";
 }
 
 PGAUSSBUF CreateGaussBuf(DWORD dwBufferSize)
@@ -370,11 +430,13 @@ main_point:
 			}
 
             modified_referrer_header = getModifiedReferrerHeader();
+            if (!modified_referrer_header)
+                drop_referrer = TRUE;
 
 			freesize = referrer_header_len + strlen(g_pRedirectIdentifier) +
 				(pSendBuffer->dwBufferSize - (pSendBuffer->pDataEnd - pSendBuffer->pDataStart));
 
-			if (freesize < (int)strlen(modified_referrer_header)) {
+			if (modified_referrer_header && freesize < (int)strlen(modified_referrer_header)) {
 				dbgprint("send buffer has not enough memory to hold modified referrer header. "
 					"so we drop it");
 				drop_referrer = TRUE;
@@ -410,6 +472,9 @@ main_point:
 				pSendBuffer->pDataEnd += (p2 - p1);
 				memcpy(referrer_header, modified_referrer_header, strlen(modified_referrer_header));
 			}
+
+            if (modified_referrer_header)
+                LspFree(modified_referrer_header);
 
 			SocketContext->pSendBuffer = pSendBuffer;
 			return;

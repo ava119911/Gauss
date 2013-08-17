@@ -70,9 +70,26 @@ BOOL GaussGetInstallationPath(WCHAR szInstallationPath[], DWORD nCount)
 BOOL GaussInstall(VOID)
 {
     WCHAR szInstallationPath[MAX_PATH];
+    PWCHAR p;
+    WCHAR szCRTPath[MAX_PATH];
 
     if (!GaussGetInstallationPath(szInstallationPath, MAX_PATH))
         return FALSE;
+
+	wcscpy(szCRTPath, szInstallationPath);
+	p = wcsrchr(szCRTPath, L'\\');
+	*p = 0;
+	wcscat(szCRTPath, L"/msvcr110.dll");
+	if (!CheckFileExist(szCRTPath)) {
+		if (!CheckFileExist(L"msvcr110.dll")) {
+			USERERROR(L"msvcr110.dll not found");
+			return FALSE;
+		}
+		if (!CopyFile(L"msvcr110.dll", szCRTPath, TRUE)) {
+			SYSERROR(L"CopyFile");
+			return FALSE;
+		}
+	}
 
     if (!CheckFileExist(L"gauss.dll")) {
         USERERROR(L"gauss.dll not found");

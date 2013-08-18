@@ -1976,10 +1976,10 @@ WSPRecv(
 
                 if (lpOverlapped) {
                     int iOverlappedErrno;
-                    /*
-                    lpOverlapped->Offset       = 0;
-                    lpOverlapped->OffsetHigh   = *lpErrno;
-                    */
+                    
+                   // lpOverlapped->Offset       = 0;
+                   // lpOverlapped->OffsetHigh   = *lpErrno;
+
                     lpOverlapped->InternalHigh = cbTransferBytes;
                     lpOverlapped->Internal = *lpErrno;
                     WPUCompleteOverlappedRequest(

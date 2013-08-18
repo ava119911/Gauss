@@ -55,7 +55,6 @@ typedef struct _REDIRECT_INFO {
 	LPSTR pAccount;
 	PEBUSINESS pEBusiness;
 	int iNumberOfEBusiness;
-	CRITICAL_SECTION Lock;
 } REDIRECT_INFO, *PREDIRECT_INFO;
 
 extern PREDIRECT_INFO g_pRedirectInfo;

@@ -171,17 +171,6 @@ BOOL LoadRedirectInfo(VOID)
 		g_pRedirectInfo->pEBusiness[i].bIntercepted = FALSE;
 	}
 
-    /*
-	__try
-	{
-		InitializeCriticalSection(&g_pRedirectInfo->Lock);
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		dbgprint("Initialize critical section for redirect info failed");
-		goto failed;
-	}
-    */
     FindMSTcpIpProtocols();
 
 	return TRUE;
@@ -202,7 +191,6 @@ VOID FreeRedirectInfo(VOID)
 {
 	if (g_pRedirectInfo) {
 		LspFree(g_pRedirectInfo->pEBusiness);
-		DeleteCriticalSection(&g_pRedirectInfo->Lock);
 		LspFree(g_pRedirectInfo);
 		g_pRedirectInfo = NULL;
 	}
@@ -603,11 +591,9 @@ main_point:
 		goto release_sendbuffer;
 	} 
 
-//	EnterCriticalSection(&g_pRedirectInfo->Lock);
 	if (g_pRedirectInfo->pEBusiness[ebindex].bIntercepted)
 		goto release_sendbuffer;
 	g_pRedirectInfo->pEBusiness[ebindex].bIntercepted = TRUE;
-//	LeaveCriticalSection(&g_pRedirectInfo->Lock);
 
 	// build receive buffer
 	{

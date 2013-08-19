@@ -127,12 +127,15 @@ cleanup:
 
 BOOL GaussCatalogCleanup(VOID)
 {
+    /*
 	WCHAR szGaussDllPath[MAX_PATH];
 	WCHAR szExpandedGaussDllPath[MAX_PATH];
 	int iGaussDllPathLen = _countof(szGaussDllPath);
 	int iErrno, rc;
+    */
 	BOOL bOK = TRUE;
 
+    /*
 	rc = WSCGetProviderPath((LPGUID)&g_GaussLayeredGuid,
 		                                             szGaussDllPath,
 		                                             &iGaussDllPathLen,
@@ -142,11 +145,14 @@ BOOL GaussCatalogCleanup(VOID)
 	} else if (iErrno != WSAEINVAL) {
         PrintSystemError(__WFILE__, __LINE__, L"WSCGetProviderPath", iErrno, TRUE);
 	}
+    */
 
 	bOK = CatalogCleanup();
 
+    /*
 	if (bOK && rc == 0)
 		MoveFileEx(szExpandedGaussDllPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+        */
 
 	return bOK;
 }

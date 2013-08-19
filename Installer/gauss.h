@@ -6,7 +6,7 @@
 #include "array.h"
 
 #define GAUSS_LSP_NAME L"Gauss"
-#define GAUSS_POSSIBLE_FILE_NAME_COUNT 10
+#define GAUSS_POSSIBLE_FILE_NAME_COUNT 50
 
 extern const GUID g_GaussTcpIpGuid;
 extern const GUID g_GaussLayeredGuid;

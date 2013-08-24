@@ -13,9 +13,14 @@ import java.util.Map;
 
 public class AccessStatistic extends AbstractLogStatistic {
 	private Map<String, Long> ipCounter = new HashMap<String, Long>();
+	private final String today;
 	
 	private final SimpleDateFormat formatter = 
 			new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	
+	public AccessStatistic() {
+		today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
+	}
 	
 	/*
 	 * line example:
@@ -39,15 +44,15 @@ public class AccessStatistic extends AbstractLogStatistic {
 	}
 
 	@Override
-	boolean incrementCounter(String line) {
+	boolean incrementCounter(String date, String line) {
 		String[] parts = line.split("\\s+");
 		String externalIp = parts[2];
 		String internalIp = parts[3].split(":")[0];
-		String ipPair = String.format("%s/%s", externalIp, internalIp);
-		Long counter = ipCounter.get(ipPair);
+		String key = String.format("%s/%s/%s", date, externalIp, internalIp);
+		Long counter = ipCounter.get(key);
 		if (counter == null)
 			counter = new Long(0);
-		ipCounter.put(ipPair, new Long(counter + 1));
+		ipCounter.put(key, new Long(counter + 1));
 		return counter == 0;
 	}
 	
@@ -68,11 +73,12 @@ public class AccessStatistic extends AbstractLogStatistic {
 			counters[LAST_15_DAYS],
 			counters[LAST_30_DAYS]);
 		
-		if (ipCounter.size() < 5)
-			return;
-		
-		List<Map.Entry<String, Long>> list = new ArrayList<Map.Entry<String,Long>>(
-				ipCounter.entrySet());
+		List<Map.Entry<String, Long>> list = new ArrayList<Map.Entry<String,Long>>();
+		for (Map.Entry<String, Long> entry : ipCounter.entrySet()) {
+			if (entry.getKey().startsWith(today)) {
+				list.add(entry);
+			}
+		}
 		Collections.sort(list, new Comparator<Map.Entry<String, Long>>() {
 			public int compare(Map.Entry<String, Long> e1, Map.Entry<String, Long> e2) {
 				long counter1 = e1.getValue();
@@ -82,7 +88,7 @@ public class AccessStatistic extends AbstractLogStatistic {
 		});
 		System.out.printf("\nTop 5 common ip\n");
 		System.out.printf("===============\n");
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < Math.min(5, list.size()); i++) {
 			System.out.printf("%s(%d)\n", list.get(i).getKey(), list.get(i).getValue());
 		}
 	}

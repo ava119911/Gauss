@@ -1,6 +1,8 @@
 Target/
 Debug
+Release
 Gauss.sdf
+Gauss.opensdf
 Gauss.v11.suo
 target/
 .*
